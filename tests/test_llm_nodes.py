@@ -10,7 +10,7 @@ class FakeLLM:
     def __init__(self, output):
         self._output = output
 
-    async def ainvoke(self, messages):
+    async def ainvoke(self, messages, *args, **kwargs):
         return self._output
 
 

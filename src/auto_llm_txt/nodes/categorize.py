@@ -9,12 +9,12 @@ from collections import defaultdict
 from urllib.parse import urlparse
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 
 from auto_llm_txt.config import settings
 from auto_llm_txt.prompts import CATEGORIZE
 from auto_llm_txt.state import (
     CategorizeOutput,
-    CategorizeSectionOutput,
     FetchError,
     PageSummary,
     Section,
@@ -34,7 +34,7 @@ def _heuristic_sections(pages: list[PageSummary], base_url: str) -> tuple[list[S
         try:
             parsed = urlparse(base_url)
             site_title = parsed.netloc or base_url
-        except Exception:
+        except Exception:  # noqa: BLE001
             site_title = base_url
     site_title = site_title or "Untitled Site"
     site_description = f"Documentation for {site_title} — {len(pages)} pages indexed."
@@ -50,7 +50,7 @@ def _heuristic_sections(pages: list[PageSummary], base_url: str) -> tuple[list[S
     try:
         base_parsed = urlparse(base_url)
         base_path = base_parsed.path.rstrip("/") or ""
-    except Exception:
+    except Exception:  # noqa: BLE001
         base_path = ""
 
     groups: dict[str, list[PageSummary]] = defaultdict(list)
@@ -73,11 +73,10 @@ def _heuristic_sections(pages: list[PageSummary], base_url: str) -> tuple[list[S
                 # If key is like "Intro" for single page, that would create per-page sections which is too many.
                 # Instead treat single-segment pages as "Documentation" unless there are multiple with same prefix?
                 # Simplify: if group would have only 1 page, later we merge small groups
-                key = key
             else:
                 # Use first segment as group, e.g., api, guides, docs
                 key = segments[0].replace("-", " ").replace("_", " ").title()
-        except Exception:
+        except Exception:  # noqa: BLE001
             key = "Documentation"
         groups[key].append(p)
 
@@ -141,7 +140,7 @@ def _normalize_pages(pages: list) -> list[PageSummary]:
     return out
 
 
-async def categorize(state: SiteState) -> dict:
+async def categorize(state: SiteState, config: RunnableConfig = None) -> dict:
     curated_raw = state.get("curated_summaries") or state.get("summaries") or []
     base_url = state.get("base_url") or ""
 
@@ -207,7 +206,10 @@ async def categorize(state: SiteState) -> dict:
             ),
         ]
 
-        output: CategorizeOutput = await llm.ainvoke(messages)  # type: ignore[assignment]
+        if config is not None:
+            output: CategorizeOutput = await llm.ainvoke(messages, config=config)  # type: ignore[assignment]
+        else:
+            output: CategorizeOutput = await llm.ainvoke(messages)  # type: ignore[assignment]
 
         # Validate and map
         input_urls = {p.url for p in curated}
@@ -232,10 +234,11 @@ async def categorize(state: SiteState) -> dict:
                     # Do fuzzy match: find first input url that ends with same path
                     matched = None
                     for cand in input_urls:
-                        if cand.rstrip("/") == u.rstrip("/") or cand.endswith(u) or u.endswith(cand):
-                            if cand not in seen and cand not in valid_urls:
-                                matched = cand
-                                break
+                        if (
+                            cand.rstrip("/") == u.rstrip("/") or cand.endswith(u) or u.endswith(cand)
+                        ) and (cand not in seen and cand not in valid_urls):
+                            matched = cand
+                            break
                     if matched:
                         valid_urls.append(matched)
                     else:

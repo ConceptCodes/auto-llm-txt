@@ -8,6 +8,7 @@ Uses LLM when OPENROUTER_API_KEY is set; otherwise heuristic fallback.
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 
 from auto_llm_txt.config import settings
 from auto_llm_txt.constants import PageQuality
@@ -42,7 +43,7 @@ def _heuristic_description(title: str, markdown: str) -> tuple[str, PageQuality]
     return "Documentation page", PageQuality.medium
 
 
-async def summarize_page(state: dict) -> dict:
+async def summarize_page(state: dict, config: RunnableConfig = None) -> dict:
     """Summarize a single page.
 
     Input `state` is the private Send payload: {"page": Page}
@@ -87,7 +88,10 @@ async def summarize_page(state: dict) -> dict:
                 content=f"Title: {title}\nURL: {url}\n\nMarkdown excerpt:\n{excerpt}"
             ),
         ]
-        result: SummarizeOutput = await llm.ainvoke(messages)  # type: ignore[assignment]
+        if config is not None:
+            result: SummarizeOutput = await llm.ainvoke(messages, config=config)  # type: ignore[assignment]
+        else:
+            result: SummarizeOutput = await llm.ainvoke(messages)  # type: ignore[assignment]
 
         # Coerce quality to enum if LLM returned string
         quality = result.quality

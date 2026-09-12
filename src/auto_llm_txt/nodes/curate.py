@@ -6,6 +6,7 @@ When LLM is unavailable, falls back to quality-based heuristic (drop low).
 from __future__ import annotations
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 
 from auto_llm_txt.config import settings
 from auto_llm_txt.constants import PageQuality
@@ -62,7 +63,7 @@ def _heuristic_curate(summaries: list[PageSummary]) -> tuple[list[PageSummary], 
     return kept, warnings
 
 
-async def curate(state: SiteState) -> dict:
+async def curate(state: SiteState, config: RunnableConfig = None) -> dict:
     summaries: list[PageSummary] = state.get("summaries") or state.get("curated_summaries") or []  # type: ignore[assignment]
     if not summaries:
         return {"curated_summaries": [], "active_node": "curate"}
@@ -114,7 +115,10 @@ async def curate(state: SiteState) -> dict:
             ),
         ]
 
-        output: CurateOutput = await llm.ainvoke(messages)  # type: ignore[assignment]
+        if config is not None:
+            output: CurateOutput = await llm.ainvoke(messages, config=config)  # type: ignore[assignment]
+        else:
+            output: CurateOutput = await llm.ainvoke(messages)  # type: ignore[assignment]
 
         # Validate keep_urls against input set
         input_urls = {s.url for s in summaries}
