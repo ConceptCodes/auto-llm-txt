@@ -3,13 +3,16 @@ name = "auto-llm-txt"
 version = "0.1.0"
 description = "Auto-generate llms.txt for any site using LangGraph"
 readme = "README.md"
+authors = [
+    { name = "David Ojo", email = "conceptcodes@gmail.com" }
+]
 requires-python = ">=3.11"
 dependencies = [
     "httpx>=0.28.1",
     "langchain-core>=1.4.3",
     "langchain-openrouter>=0.2.3",
     "langgraph>=1.2.4",
-    "langgraph-cli>=0.4.27",
+    "langgraph-cli[inmem]>=0.4.27",
     "pydantic>=2.9",
     "pydantic-settings>=2.14.1",
     "trafilatura>=2.0.0",
@@ -17,6 +20,10 @@ dependencies = [
     "lxml>=5.0",
     "rich>=13.0",
 ]
+
+[project.scripts]
+auto-llm-txt = "auto_llm_txt.cli:main"
+auto-llm-txt-studio = "auto_llm_txt.studio:main"
 
 [build-system]
 requires = ["hatchling"]

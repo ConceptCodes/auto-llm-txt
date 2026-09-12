@@ -93,5 +93,8 @@ def get_graph(checkpointer: BaseCheckpointSaver | None = None):
     return compiled
 
 
-# Compiled graph for `langgraph up` / direct import
+# The CLI owns this checkpointer so it can inspect the final state after streaming.
 graph = get_graph()
+
+# LangGraph API and Studio provide persistence and require an uncheckpointed graph.
+studio_graph = build_graph().compile()

@@ -8,6 +8,7 @@ dist/
 build/
 .pytest_cache/
 .ruff_cache/
+.langgraph_api/
 *.log
 out/
 .DS_Store
