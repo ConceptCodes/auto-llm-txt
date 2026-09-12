@@ -6,7 +6,6 @@ from typing_extensions import TypedDict
 
 from auto_llm_txt.constants import PageQuality
 
-
 # ---------------------------------------------------------------------------
 # Pydantic models — structured data passed between nodes / to LLMs
 # ---------------------------------------------------------------------------
@@ -81,8 +80,14 @@ class FetchError(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# LangGraph state — shared across the graph
+# LangGraph state — worker payload & shared graph state
 # ---------------------------------------------------------------------------
+
+
+class SummarizePageState(TypedDict):
+    """Private worker payload passed to summarize_page via Send."""
+
+    page: Page
 
 
 class SiteState(TypedDict, total=False):

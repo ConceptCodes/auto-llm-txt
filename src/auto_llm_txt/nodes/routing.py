@@ -6,22 +6,20 @@ fan_out_summaries implements the Send API map-reduce pattern:
 
 from __future__ import annotations
 
-from langgraph.types import Send
+from typing import Literal
 
-from auto_llm_txt.state import SiteState
+from langgraph.types import Command, Send
+
+from auto_llm_txt.state import SiteState, SummarizePageState
 
 
-def fan_out_summaries(state: SiteState) -> list[Send]:
-    """Conditional edge after `extract`: one Send per page.
+def fan_out_summaries(state: SiteState) -> Command[Literal["curate", "summarize_page"]]:
+    """Route pages using the Command API.
 
-    Returns a list of Send("summarize_page", {"page": page}) so each page is
-    summarized in its own parallel branch. Results merge via the
-    `Annotated[list[PageSummary], operator.add]` reducer on `summaries`.
-
-    If there are no pages, return a no-op (graph will still proceed via the
-    normal edge to curate; we return an empty list to signal nothing to fan out).
+    Returns a Command routing to parallel `summarize_page` workers via Send,
+    or directly jumps to `curate` if no pages are available.
     """
     pages: list = state.get("pages") or []
     if not pages:
-        return []
-    return [Send("summarize_page", {"page": page}) for page in pages]
+        return Command(goto="curate")
+    return Command(goto=[Send("summarize_page", SummarizePageState(page=page)) for page in pages])

@@ -26,6 +26,7 @@ def build_graph() -> StateGraph:
     builder.add_node("discover", discover)
     builder.add_node("fetch", fetch)
     builder.add_node("extract", extract)
+    builder.add_node("fan_out_summaries", fan_out_summaries)
     builder.add_node("summarize_page", summarize_page)
     builder.add_node("curate", curate)
     builder.add_node("categorize", categorize)
@@ -36,9 +37,7 @@ def build_graph() -> StateGraph:
     builder.add_edge(START, "discover")
     builder.add_edge("discover", "fetch")
     builder.add_edge("fetch", "extract")
-
-    # Fan-out: one parallel summarize_page per Page via Send API
-    builder.add_conditional_edges("extract", fan_out_summaries, ["summarize_page"])
+    builder.add_edge("extract", "fan_out_summaries")
 
     # Each summarize_page branch converges on curate (add reducer merges summaries)
     builder.add_edge("summarize_page", "curate")
