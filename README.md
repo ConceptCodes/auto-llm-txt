@@ -8,8 +8,6 @@ Generate a compact, spec-aligned `llms.txt` index (and an optional curated
 - LLM summarization + curation + categorization (parallel via LangGraph **Send API**)
 - llms.txt v2-aligned renderer and validator — [llmstxt.org](https://llmstxt.org)
 
-Structure mirrors [triage-bot](https://github.com/ConceptCodes/triage-bot): `src/auto_llm_txt/agent.py` owns the graph, `nodes/` are pure functions, `tools/` are IO helpers, `prompts.py` centralizes prompts.
-
 ## Agent workflow
 
 ```mermaid
