@@ -1,0 +1,41 @@
+import pytest
+
+from auto_llm_txt.agent import graph
+from auto_llm_txt.state import Page
+
+
+@pytest.mark.asyncio
+async def test_graph_scaffold_single_page():
+    config = {"configurable": {"thread_id": "test-scaffold-single"}}
+    result = await graph.ainvoke(
+        {"base_url": "https://example.com/", "output_dir": "./out", "max_pages": 5}, config
+    )
+    assert result["llms_txt"].startswith("# ")
+    assert "> " in result["llms_txt"]
+    assert "## " in result["llms_txt"]
+    assert result["errors"] == []
+
+
+@pytest.mark.asyncio
+async def test_graph_parallel_send():
+    config = {"configurable": {"thread_id": "test-parallel"}}
+    pages = [
+        Page(url="https://example.com/a", title="A", markdown="Cats.", depth=0),
+        Page(url="https://example.com/b", title="B", markdown="Dogs.", depth=1),
+        Page(url="https://example.com/c", title="C", markdown="Birds.", depth=1),
+    ]
+    result = await graph.ainvoke(
+        {
+            "base_url": "https://example.com/",
+            "output_dir": "./out",
+            "max_pages": 5,
+            "urls": [p.url for p in pages],
+            "pages": pages,
+        },
+        config,
+    )
+    # Send API should produce 3 summaries in parallel
+    assert len(result["summaries"]) == 3
+    assert len(result["curated_summaries"]) == 3
+    assert len(result["sections"]) == 1
+    assert "Page A" in result["llms_txt"] or "A" in result["llms_txt"]
