@@ -27,7 +27,7 @@ async def test_summarize_with_llm(monkeypatch):
         assert schema == SummarizeOutput
         return FakeLLM(fake_output)
 
-    monkeypatch.setattr("auto_llm_txt.nodes.utils.get_structured_llm", fake_get_structured)
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
 
     page = Page(url="https://ex.com/setup", title="Setup", markdown="# Setup\nDo this...", depth=0)
     result = await summarize_page({"page": page})
@@ -51,7 +51,7 @@ async def test_summarize_llm_truncates_long_description(monkeypatch):
     def fake_get_structured(schema, llm=None):
         return FakeLLM(fake_output)
 
-    monkeypatch.setattr("auto_llm_txt.nodes.utils.get_structured_llm", fake_get_structured)
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
     page = Page(url="https://ex.com/a", title="A", markdown="hi", depth=0)
     result = await summarize_page({"page": page})
     desc = result["summaries"][0].description
@@ -72,7 +72,7 @@ async def test_summarize_fallback_on_llm_error(monkeypatch):
     def fake_get_structured(schema, llm=None):
         return FailingLLM()
 
-    monkeypatch.setattr("auto_llm_txt.nodes.utils.get_structured_llm", fake_get_structured)
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
     page = Page(url="https://ex.com/a", title="Hello", markdown="Some content here", depth=0)
     result = await summarize_page({"page": page})
     # Should fallback to heuristic, still produce summary
@@ -114,7 +114,7 @@ async def test_curate_with_llm(monkeypatch):
         assert schema == CurateOutput
         return FakeLLM(fake_output)
 
-    monkeypatch.setattr("auto_llm_txt.nodes.utils.get_structured_llm", fake_get_structured)
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
 
     result = await curate({"summaries": summaries})
     kept = result["curated_summaries"]
@@ -153,7 +153,7 @@ async def test_curate_llm_empty_keep_fallback(monkeypatch):
     def fake_get_structured(schema, llm=None):
         return FakeLLM(fake_output)
 
-    monkeypatch.setattr("auto_llm_txt.nodes.utils.get_structured_llm", fake_get_structured)
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
 
     result = await curate({"summaries": summaries})
     assert len(result["curated_summaries"]) == 1
@@ -185,7 +185,7 @@ async def test_categorize_with_llm(monkeypatch):
         assert schema == CategorizeOutput
         return FakeLLM(fake_output)
 
-    monkeypatch.setattr("auto_llm_txt.nodes.utils.get_structured_llm", fake_get_structured)
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
 
     result = await categorize({"curated_summaries": curated, "base_url": "https://ex.com/docs/"})
     assert result["site_title"] == "Example Docs"
@@ -222,7 +222,7 @@ async def test_categorize_llm_handles_missing_urls(monkeypatch):
     def fake_get_structured(schema, llm=None):
         return FakeLLM(fake_output)
 
-    monkeypatch.setattr("auto_llm_txt.nodes.utils.get_structured_llm", fake_get_structured)
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
 
     result = await categorize({"curated_summaries": curated, "base_url": "https://ex.com/"})
     assert len(result["sections"]) == 2  # Docs + Other
@@ -315,7 +315,7 @@ async def test_end_to_end_with_mocked_llm(monkeypatch):
     monkeypatch.setattr("auto_llm_txt.nodes.curate.get_structured_llm", fake_get_structured, raising=False)
     monkeypatch.setattr("auto_llm_txt.nodes.categorize.get_structured_llm", fake_get_structured, raising=False)
     # Actually summarize uses utils.get_structured_llm, so patch that too for the other path
-    monkeypatch.setattr("auto_llm_txt.nodes.utils.get_structured_llm", fake_get_structured)
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
 
     # Patch summarize_page to use our fake_summarize logic (to avoid needing LLM for each page)
     monkeypatch.setattr("auto_llm_txt.nodes.summarize.summarize_page", fake_summarize)

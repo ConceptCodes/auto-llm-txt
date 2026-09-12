@@ -180,7 +180,7 @@ async def categorize(state: SiteState) -> dict:
 
     # LLM path
     try:
-        from auto_llm_txt.nodes.utils import get_structured_llm
+        from auto_llm_txt.utils import get_structured_llm
 
         llm = get_structured_llm(CategorizeOutput)
 

@@ -70,7 +70,7 @@ async def summarize_page(state: dict) -> dict:
 
     # LLM path
     try:
-        from auto_llm_txt.nodes.utils import get_structured_llm
+        from auto_llm_txt.utils import get_structured_llm
 
         llm = get_structured_llm(SummarizeOutput)
         # Truncate markdown to keep prompt bounded (~3000 chars ≈ 750 tokens)
