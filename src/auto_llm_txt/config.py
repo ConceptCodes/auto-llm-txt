@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # LLM — OpenRouter-style, provider-agnostic (mirrors triage-bot)
     openrouter_api_key: str = ""
-    llm_model: str = "openai/gpt-4o-mini"
+    llm_model: str = "google/gemini-3.8-flash"
     llm_temperature: float = 0.0
 
     # Crawler
