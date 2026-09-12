@@ -1,0 +1,44 @@
+[project]
+name = "auto-llm-txt"
+version = "0.1.0"
+description = "Auto-generate llms.txt for any site using LangGraph"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1",
+    "langchain-core>=1.4.3",
+    "langchain-openrouter>=0.2.3",
+    "langgraph>=1.2.4",
+    "langgraph-cli>=0.4.27",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.14.1",
+    "trafilatura>=2.0.0",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "rich>=13.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/auto_llm_txt"]
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "respx>=0.22",
+    "ruff>=0.14",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
