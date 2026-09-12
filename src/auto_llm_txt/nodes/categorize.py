@@ -28,16 +28,25 @@ from auto_llm_txt.state import (
 
 def _heuristic_sections(pages: list[PageSummary], base_url: str) -> tuple[list[Section], str, str]:
     """Group pages by URL path prefix for fallback."""
-    # Site title from base_url host
+    # Prefer the base page's human title over a bare hostname.
     site_title = ""
+    base_page = next((page for page in pages if page.url.rstrip("/") == base_url.rstrip("/")), None)
+    if base_page:
+        candidate = base_page.title.strip()
+        for separator in (" | ", " — ", " - "):
+            parts = [part.strip() for part in candidate.split(separator) if part.strip()]
+            if len(parts) > 1 and parts[0].casefold() in {"home", "homepage", "index"}:
+                candidate = parts[-1]
+                break
+        site_title = candidate
     if base_url:
         try:
             parsed = urlparse(base_url)
-            site_title = parsed.netloc or base_url
+            site_title = site_title or parsed.netloc or base_url
         except Exception:  # noqa: BLE001
-            site_title = base_url
+            site_title = site_title or base_url
     site_title = site_title or "Untitled Site"
-    site_description = f"Documentation for {site_title} — {len(pages)} pages indexed."
+    site_description = f"Overview of {site_title}, with {len(pages)} curated pages and resources."
 
     if not pages:
         return [], site_title, site_description
@@ -62,20 +71,14 @@ def _heuristic_sections(pages: list[PageSummary], base_url: str) -> tuple[list[S
                 path = path[len(base_path) :] or "/"
             # Split into segments
             segments = [s for s in path.split("/") if s]
-            if not segments:
+            if not segments or len(segments) == 1:
                 key = "General"
-            elif len(segments) == 1:
-                # Single file like /intro → group by its name? use "General" or file name
-                # Use first segment capitalized as group? But many distinct files would create many groups,
-                # so we bucket them into "Documentation" and rely on LLM for smarter grouping.
-                # For heuristic fallback, just use first segment or "Documentation"
-                key = segments[0].replace("-", " ").replace("_", " ").title()
-                # If key is like "Intro" for single page, that would create per-page sections which is too many.
-                # Instead treat single-segment pages as "Documentation" unless there are multiple with same prefix?
-                # Simplify: if group would have only 1 page, later we merge small groups
             else:
                 # Use first segment as group, e.g., api, guides, docs
                 key = segments[0].replace("-", " ").replace("_", " ").title()
+                key = {"O": "Organizations", "Page": "Resources", "Pages": "Resources"}.get(
+                    key, key
+                )
         except Exception:  # noqa: BLE001
             key = "Documentation"
         groups[key].append(p)
@@ -84,7 +87,7 @@ def _heuristic_sections(pages: list[PageSummary], base_url: str) -> tuple[list[S
     merged: dict[str, list[PageSummary]] = {}
     other: list[PageSummary] = []
     for name, grp in groups.items():
-        if len(grp) < 2:
+        if len(grp) < 2 and name != "General":
             other.extend(grp)
         else:
             merged[name] = grp

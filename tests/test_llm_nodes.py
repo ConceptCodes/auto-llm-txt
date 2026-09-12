@@ -94,6 +94,30 @@ async def test_summarize_heuristic_when_no_key(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_summarize_heuristic_marks_empty_and_listing_shells_low(monkeypatch):
+    from auto_llm_txt.nodes.summarize import summarize_page
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "")
+
+    empty = await summarize_page(
+        {"page": Page(url="https://ex.com/empty", title="Empty", markdown="", depth=0)}
+    )
+    listing = await summarize_page(
+        {
+            "page": Page(
+                url="https://ex.com/documents",
+                title="Documents",
+                markdown="Name\nType\nSize",
+                depth=0,
+            )
+        }
+    )
+
+    assert empty["summaries"][0].quality == PageQuality.low
+    assert listing["summaries"][0].quality == PageQuality.low
+
+
+@pytest.mark.asyncio
 async def test_curate_with_llm(monkeypatch):
     from auto_llm_txt.nodes.curate import curate
 
@@ -157,6 +181,32 @@ async def test_curate_llm_empty_keep_fallback(monkeypatch):
 
     result = await curate({"summaries": summaries})
     assert len(result["curated_summaries"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_curate_rejects_an_aggressively_small_llm_selection(monkeypatch):
+    from auto_llm_txt.nodes.curate import curate
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "sk-test")
+    summaries = [
+        PageSummary(
+            url=f"https://ex.com/{index}",
+            title=f"Page {index}",
+            description=f"Useful information {index}",
+            quality=PageQuality.medium,
+        )
+        for index in range(10)
+    ]
+
+    def fake_get_structured(schema, llm=None):
+        return FakeLLM(CurateOutput(keep_urls=[summaries[0].url], dropped=[]))
+
+    monkeypatch.setattr("auto_llm_txt.utils.get_structured_llm", fake_get_structured)
+
+    result = await curate({"summaries": summaries})
+
+    assert len(result["curated_summaries"]) == 10
+    assert any("too aggressively" in warning for warning in result["warnings"])
 
 
 @pytest.mark.asyncio
@@ -265,6 +315,49 @@ async def test_categorize_heuristic_small_site_single_section(monkeypatch):
     result = await categorize({"curated_summaries": curated, "base_url": "https://ex.com/"})
     assert len(result["sections"]) == 1
     assert result["sections"][0].name == "Documentation"
+
+
+@pytest.mark.asyncio
+async def test_categorize_heuristic_uses_human_labels_and_home_title(monkeypatch):
+    from auto_llm_txt.nodes.categorize import categorize
+
+    monkeypatch.setattr(settings, "openrouter_api_key", "")
+    monkeypatch.setattr(settings, "site_title", "")
+    curated = [
+        PageSummary(
+            url="https://school.example/",
+            title="Home | Example Schools",
+            description="Welcome",
+            quality=PageQuality.high,
+        ),
+        *[
+            PageSummary(
+                url=f"https://school.example/o/school-{index}",
+                title=f"School {index}",
+                description="School information",
+                quality=PageQuality.high,
+            )
+            for index in range(3)
+        ],
+        *[
+            PageSummary(
+                url=f"https://school.example/page/resource-{index}",
+                title=f"Resource {index}",
+                description="District resource",
+                quality=PageQuality.high,
+            )
+            for index in range(3)
+        ],
+    ]
+
+    result = await categorize({"curated_summaries": curated, "base_url": "https://school.example/"})
+
+    assert result["site_title"] == "Example Schools"
+    assert {section.name for section in result["sections"]} == {
+        "General",
+        "Organizations",
+        "Resources",
+    }
 
 
 @pytest.mark.asyncio

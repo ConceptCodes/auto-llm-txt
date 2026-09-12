@@ -19,12 +19,13 @@ async def extract(state: SiteState) -> dict:
         if pages:
             # Already have pages (e.g., tests injecting pages directly) — keep them
             return {"pages": pages, "active_node": "extract"}
-        # Truly empty — create placeholder so downstream LLM nodes still run in scaffold mode
-        # But in real mode this is a warning; we still create placeholder to keep graph functional
-        pages = [
-            Page(url=base_url or "https://example.com/", title="Example", markdown="Placeholder content.", depth=0)
-        ]
-        return {"pages": pages, "warnings": ["extract: no html to extract, using placeholder"], "active_node": "extract"}
+        # Never manufacture content after a crawl failure. Downstream nodes can
+        # produce a minimal diagnostic result without presenting invented pages.
+        return {
+            "pages": [],
+            "warnings": [f"extract: no HTML was available for {base_url or 'the requested site'}"],
+            "active_node": "extract",
+        }
 
     pages: list[Page] = []
     warnings: list[str] = []

@@ -14,7 +14,23 @@ llms.txt format:
 All functions are pure and heavily unit-tested via golden files.
 """
 
+import re
+
 from auto_llm_txt.state import Page, Section
+
+
+def _single_line(value: str, fallback: str = "") -> str:
+    """Collapse untrusted text so it cannot inject llms.txt structure."""
+    return " ".join(value.split()).strip() or fallback
+
+
+def _link_title(value: str) -> str:
+    return _single_line(value, "Untitled").replace("[", "\\[").replace("]", "\\]")
+
+
+def _link_url(value: str) -> str:
+    """Encode characters that can terminate a Markdown link destination."""
+    return value.strip().replace(" ", "%20").replace("(", "%28").replace(")", "%29")
 
 
 def render_llms_txt(
@@ -38,13 +54,13 @@ def render_llms_txt(
     lines: list[str] = []
 
     # H1 — required to be first non-empty line per spec
-    title = site_title.strip() or "Untitled Site"
+    title = _single_line(site_title, "Untitled Site")
     lines.append(f"# {title}")
     lines.append("")
 
-    # Blockquote — required
+    # The blockquote is optional in v2, but including a useful summary is best practice.
     desc = site_description.strip() or "Documentation for this site."
-    # Support multi-line descriptions: prefix each line with > 
+    # Support multi-line descriptions: prefix each line with >
     for line in desc.splitlines():
         line = line.strip()
         if line:
@@ -58,22 +74,23 @@ def render_llms_txt(
         lines.append("")
     else:
         for section in sections:
-            lines.append(f"## {section.name.strip()}")
+            lines.append(f"## {_single_line(section.name, 'Documentation')}")
             lines.append("")
-            if section.description and section.description.strip():
-                lines.append(section.description.strip())
-                lines.append("")
             for page in section.pages:
-                # Escape brackets in title minimally
-                safe_title = page.title.strip().replace("[", "\\[").replace("]", "\\]")
-                safe_desc = page.description.strip().replace("\n", " ")
-                lines.append(f"- [{safe_title}]({page.url}): {safe_desc}")
+                safe_title = _link_title(page.title)
+                safe_url = _link_url(page.url)
+                safe_desc = _single_line(page.description)
+                suffix = f": {safe_desc}" if safe_desc else ""
+                lines.append(f"- [{safe_title}]({safe_url}){suffix}")
             lines.append("")
 
     if full_txt_url:
         lines.append("## Optional")
         lines.append("")
-        lines.append(f"- [Full documentation dump]({full_txt_url}): Complete markdown for all pages")
+        lines.append(
+            f"- [Full documentation dump]({_link_url(full_txt_url)}): "
+            "Complete markdown for the curated pages"
+        )
         lines.append("")
 
     # Ensure single trailing newline, no excessive blank lines at end
@@ -88,13 +105,13 @@ def render_llms_full_txt(pages: list[Page], site_title: str = "") -> str:
 
     parts: list[str] = []
     if site_title:
-        parts.append(f"# {site_title} — Full Documentation")
+        parts.append(f"# {_single_line(site_title)} — Full Documentation")
         parts.append("")
 
     for page in pages:
-        parts.append(f"# {page.title.strip()}")
+        parts.append(f"# {_single_line(page.title, 'Untitled')}")
         parts.append("")
-        parts.append(f"Source: {page.url}")
+        parts.append(f"Source: {_single_line(page.url)}")
         parts.append("")
         body = page.markdown.strip()
         if body:
@@ -120,21 +137,38 @@ def validate_llms_txt(text: str) -> list[str]:
     if not lines:
         return ["File is empty"]
 
-    if not lines[0].startswith("# "):
+    first_line = lines[0].lstrip("\ufeff")
+    if not first_line.startswith("# ") or first_line.startswith("## "):
         warnings.append("First non-empty line must be an H1 title ('# ...')")
 
-    has_blockquote = any(line.lstrip().startswith(">") for line in text.splitlines())
-    if not has_blockquote:
-        warnings.append("Missing blockquote summary ('> ...') after H1")
+    link_pattern = re.compile(r"^-\s+\[(?:\\.|[^]])+\]\(([^)]+)\)(?::\s*.*)?$")
+    in_file_list = False
+    section_has_link = False
+    seen_urls: set[str] = set()
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if line.startswith("## "):
+            if in_file_list and not section_has_link:
+                warnings.append(f"Line {line_number}: preceding H2 section has no file links")
+            in_file_list = True
+            section_has_link = False
+            continue
+        if line.startswith("#") and not line.startswith("## ") and line_number != 1:
+            warnings.append(f"Line {line_number}: only the first heading may be an H1")
+        if not in_file_list or not line.strip():
+            continue
+        match = link_pattern.fullmatch(line)
+        if not match:
+            warnings.append(
+                f"Line {line_number}: H2 sections may contain only Markdown file-list links"
+            )
+            continue
+        section_has_link = True
+        url = match.group(1)
+        if url in seen_urls:
+            warnings.append(f"Line {line_number}: duplicate link URL {url}")
+        seen_urls.add(url)
 
-    # Check for at least one section
-    has_h2 = any(line.startswith("## ") for line in text.splitlines())
-    if not has_h2:
-        warnings.append("No H2 sections found — at least one '## ...' expected")
-
-    # Check for malformed list items (naive)
-    for i, line in enumerate(text.splitlines(), start=1):
-        if line.startswith("- [") and "](" not in line:
-            warnings.append(f"Line {i}: malformed link — missing ']('")
+    if in_file_list and not section_has_link:
+        warnings.append("Final H2 section has no file links")
 
     return warnings

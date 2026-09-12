@@ -96,6 +96,7 @@ class SiteState(TypedDict, total=False):
     output_dir: str
     max_pages: int
     max_depth: int
+    include_full: bool
 
     # After discover
     urls: list[str]

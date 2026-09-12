@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -77,11 +78,6 @@ def parse_robots_for_sitemaps(robots_text: str) -> list[str]:
         if not line or line.startswith("#"):
             continue
         if line.lower().startswith("sitemap:"):
-            url = line.split(":", 1)[1].strip() if ":" in line else ""
-            # Sitemap: directive may be "Sitemap: https://example.com/sitemap.xml"
-            # split above is wrong because it splits on first colon -> "https"
-            # So handle properly: split on first whitespace after colon
-            # Better: find colon then take remainder
             m = re.match(r"(?i)sitemap:\s*(\S+)", line)
             if m:
                 sitemaps.append(m.group(1).strip())
@@ -159,3 +155,43 @@ def filter_and_dedupe(urls: list[str], base_url: str) -> list[str]:
         seen.add(norm)
         out.append(norm)
     return out
+
+
+def select_evenly(urls: list[str], limit: int) -> list[str]:
+    """Select across an ordered sitemap instead of biasing its first group."""
+    if limit <= 0:
+        return []
+    if len(urls) <= limit:
+        return list(urls)
+    if limit == 1:
+        return [urls[0]]
+
+    last = len(urls) - 1
+    indexes = [round(position * last / (limit - 1)) for position in range(limit)]
+    return [urls[index] for index in indexes]
+
+
+def select_representative(urls: list[str], limit: int) -> list[str]:
+    """Prefer useful landing pages, sampling evenly at the cutoff depth."""
+    if limit <= 0:
+        return []
+    if len(urls) <= limit:
+        return list(urls)
+
+    by_depth: dict[int, list[str]] = defaultdict(list)
+    for url in urls:
+        depth = len([segment for segment in urlparse(url).path.split("/") if segment])
+        by_depth[depth].append(url)
+
+    selected: list[str] = []
+    for depth in sorted(by_depth):
+        remaining = limit - len(selected)
+        if remaining <= 0:
+            break
+        bucket = by_depth[depth]
+        if len(bucket) <= remaining:
+            selected.extend(bucket)
+        else:
+            selected.extend(select_evenly(bucket, remaining))
+            break
+    return selected

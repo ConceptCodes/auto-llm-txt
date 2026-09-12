@@ -19,6 +19,14 @@ from auto_llm_txt.state import FetchError, PageSummary, SummarizeOutput, Summari
 def _heuristic_description(title: str, markdown: str) -> tuple[str, PageQuality]:
     """Fallback when LLM unavailable: first meaningful line + medium quality."""
     text = markdown.strip()
+    if not text:
+        return "No meaningful page content could be extracted", PageQuality.low
+
+    content_lines = {line.strip().casefold() for line in text.splitlines() if line.strip()}
+    listing_shell_labels = {"name", "type", "size", "documents", "search"}
+    if content_lines and content_lines <= listing_shell_labels:
+        return "Document listing with no extractable item details", PageQuality.low
+
     if text:
         first = text.split("\n")[0].strip().lstrip("# ").strip()
         # Also handle markdown headings: "# Title" -> use next line if first is just title
@@ -30,17 +38,15 @@ def _heuristic_description(title: str, markdown: str) -> tuple[str, PageQuality]
                 if clean and len(clean) > 5:
                     first = clean
                     break
-        first = first[:120].strip()
+        if len(first) > 120:
+            first = first[:117].rsplit(" ", 1)[0].rstrip(" ,;:-") + "..."
         if first:
             # Simple quality heuristic: very short or boilerplate → low
             lower = first.lower()
             if any(kw in lower for kw in ["404", "not found", "privacy", "terms of service", "cookie"]):
                 return first, PageQuality.low
             return first, PageQuality.medium
-    # Empty markdown → use title
-    if title and title != "Untitled":
-        return f"Documentation for {title}", PageQuality.medium
-    return "Documentation page", PageQuality.medium
+    return "No meaningful page content could be extracted", PageQuality.low
 
 
 async def summarize_page(state: SummarizePageState, config: RunnableConfig = None) -> dict:

@@ -5,6 +5,8 @@ When LLM is unavailable, falls back to quality-based heuristic (drop low).
 
 from __future__ import annotations
 
+import math
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
@@ -132,6 +134,24 @@ async def curate(state: SiteState, config: RunnableConfig = None) -> dict:
             kept, warnings = _heuristic_curate(summaries)
             warnings.append("curate: LLM returned empty keep list, used heuristic instead")
             return {"curated_summaries": kept, "warnings": warnings, "active_node": "curate"}
+
+        # Structured output can be syntactically valid while being operationally
+        # useless. A common failure mode is reducing a broad site to its home page.
+        # If fewer than 20% of pages survive (at least two for non-trivial sites),
+        # prefer the conservative deterministic policy.
+        minimum_kept = min(len(summaries), max(2, math.ceil(len(summaries) * 0.2)))
+        if len(valid_keep_set) < minimum_kept:
+            fallback_kept, fallback_warnings = _heuristic_curate(summaries)
+            if len(fallback_kept) > len(valid_keep_set):
+                fallback_warnings.append(
+                    "curate: LLM filtered too aggressively "
+                    f"({len(valid_keep_set)}/{len(summaries)} kept), used conservative fallback"
+                )
+                return {
+                    "curated_summaries": fallback_kept,
+                    "warnings": fallback_warnings,
+                    "active_node": "curate",
+                }
 
         kept = [s for s in summaries if s.url in valid_keep_set]
 

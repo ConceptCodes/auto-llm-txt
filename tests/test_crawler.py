@@ -1,4 +1,10 @@
-from auto_llm_txt.tools.crawler import filter_and_dedupe, is_same_prefix, parse_sitemap
+from auto_llm_txt.tools.crawler import (
+    filter_and_dedupe,
+    is_same_prefix,
+    parse_sitemap,
+    select_evenly,
+    select_representative,
+)
 
 
 def test_parse_sitemap_basic():
@@ -43,3 +49,31 @@ def test_filter_and_dedupe():
     assert "https://example.com/docs/b" in filtered
     assert "https://example.com/other" not in filtered
     assert len([u for u in filtered if u == "https://example.com/docs/a"]) == 1
+
+
+def test_select_evenly_samples_the_whole_sitemap():
+    urls = [f"https://example.com/{index}" for index in range(100)]
+
+    selected = select_evenly(urls, 5)
+
+    assert selected == [urls[0], urls[25], urls[50], urls[74], urls[99]]
+
+
+def test_select_representative_prefers_shallow_pages_and_samples_cutoff():
+    urls = [
+        "https://example.com/deep/a/1",
+        "https://example.com/about",
+        "https://example.com/deep/b/2",
+        "https://example.com/contact",
+        "https://example.com/deep/c/3",
+        "https://example.com/services",
+    ]
+
+    selected = select_representative(urls, 4)
+
+    assert selected[:3] == [
+        "https://example.com/about",
+        "https://example.com/contact",
+        "https://example.com/services",
+    ]
+    assert selected[3] == "https://example.com/deep/a/1"

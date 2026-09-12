@@ -83,6 +83,49 @@ async def test_extract_basic():
     assert pages[1].title == "Title B"
 
 
+def test_extract_markdown_removes_semantic_page_chrome():
+    from auto_llm_txt.tools.extractor import extract_markdown
+
+    html = """
+    <html><body>
+      <header>Menu and repeated branding</header>
+      <main><h1>Enrollment</h1><p>Registration opens in August.</p></main>
+      <footer>Copyright and vendor links</footer>
+    </body></html>
+    """
+
+    markdown = extract_markdown(html)
+
+    assert "Enrollment" in markdown
+    assert "Registration opens" in markdown
+    assert "repeated branding" not in markdown
+    assert "vendor links" not in markdown
+
+
+def test_extract_markdown_recovers_json_hydration_content():
+    import json
+
+    from auto_llm_txt.tools.extractor import extract_markdown
+
+    payload = {
+        "page": {
+            "content": {
+                "nodes": [
+                    {"html": "<h1>Enrollment</h1>"},
+                    {"html": "<p>Registration opens in August.</p>"},
+                ]
+            }
+        }
+    }
+    json_argument = json.dumps(json.dumps(payload))
+    html = f"<html><body><div id='app'></div><script>state = JSON.parse({json_argument})</script></body></html>"
+
+    markdown = extract_markdown(html)
+
+    assert "Enrollment" in markdown
+    assert "Registration opens in August" in markdown
+
+
 @pytest.mark.asyncio
 async def test_extract_fallback_to_pages():
     # When raw_pages empty but pages injected (scaffold tests)

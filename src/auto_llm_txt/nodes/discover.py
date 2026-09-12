@@ -24,6 +24,7 @@ from auto_llm_txt.tools.crawler import (
     is_sitemap_index,
     parse_robots_for_sitemaps,
     parse_sitemap,
+    select_representative,
 )
 from auto_llm_txt.tools.fetcher import build_client, fetch_text
 
@@ -69,7 +70,7 @@ async def discover(state: SiteState) -> dict:
         # But require at least 1 and not just the seed alone when BFS would be better?
         # Policy: if sitemap returns >=1 urls, prefer it; BFS is fallback only when sitemap empty/failed.
         if filtered:
-            capped = filtered[:max_pages]
+            capped = select_representative(filtered, max_pages)
             # Ensure base_url is included if it's within scope and not already present
             # This helps when sitemap omits the index page
             if base_url not in capped and is_same_prefix(base_url, base_url):
@@ -78,8 +79,8 @@ async def discover(state: SiteState) -> dict:
                 from auto_llm_txt.tools.crawler import normalize_url
 
                 norm_base = normalize_url(base_url, base_url)
-                if norm_base and norm_base not in capped and len(capped) < max_pages:
-                    capped = [norm_base] + capped
+                if norm_base and norm_base not in capped:
+                    capped = [norm_base, *capped[: max_pages - 1]]
             return {"urls": capped, "raw_pages": [], "active_node": "discover"}
 
     # Sitemap empty or gave no usable urls → BFS fallback
@@ -95,17 +96,16 @@ async def _discover_via_sitemap(base_url: str, max_pages: int, timeout: int, cra
     all_urls: list[str] = []
     async with build_client(timeout=timeout) as client:
         # 0) Try robots.txt for explicit sitemap locations (highest priority)
-        try:
-            robots_text, _ = await fetch_text(client, f"{origin}/robots.txt")
-            if robots_text:
-                robot_sitemaps = parse_robots_for_sitemaps(robots_text)
-                # Filter to same host or allow cross-host sitemaps? Keep only http(s)
-                for sm in robot_sitemaps:
-                    if sm.startswith("http"):
-                        candidates.append(sm)
-                await asyncio.sleep(crawl_delay)
-        except Exception:
-            pass
+        robots_text, _ = await fetch_text(client, f"{origin}/robots.txt")
+        if robots_text:
+            robot_sitemaps = parse_robots_for_sitemaps(robots_text)
+            # Do not let an untrusted robots.txt turn the crawler into an
+            # arbitrary cross-origin request client.
+            for sm in robot_sitemaps:
+                sm_parsed = urlparse(sm)
+                if sm_parsed.scheme in {"http", "https"} and sm_parsed.netloc == parsed.netloc:
+                    candidates.append(sm)
+            await asyncio.sleep(crawl_delay)
 
         # 1) Normal candidates
         candidates.extend(get_sitemap_candidates(base_url))
@@ -129,7 +129,11 @@ async def _discover_via_sitemap(base_url: str, max_pages: int, timeout: int, cra
                 # Limit sub-sitemaps to avoid explosion
                 sub_sitemaps = sub_sitemaps[:10]
                 for sub in sub_sitemaps:
-                    if not sub.startswith("http"):
+                    sub_parsed = urlparse(sub)
+                    if (
+                        sub_parsed.scheme not in {"http", "https"}
+                        or sub_parsed.netloc != parsed.netloc
+                    ):
                         continue
                     sub_text, sub_err = await fetch_text(client, sub)
                     await asyncio.sleep(crawl_delay)
@@ -140,14 +144,12 @@ async def _discover_via_sitemap(base_url: str, max_pages: int, timeout: int, cra
                         continue
                     sub_urls = parse_sitemap(sub_text)
                     all_urls.extend(sub_urls)
-                    if len(all_urls) >= max_pages:
-                        break
                 if all_urls:
-                    return all_urls[: max_pages * 2]  # return generous, filtering happens later
+                    return all_urls
             else:
                 urls = parse_sitemap(text)
                 if urls:
-                    return urls[: max_pages * 2]
+                    return urls
     return []
 
 
