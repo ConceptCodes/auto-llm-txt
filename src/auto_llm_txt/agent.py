@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import RetryPolicy
 
 from auto_llm_txt.nodes import (
     categorize,
@@ -23,13 +25,16 @@ from auto_llm_txt.state import SiteState
 def build_graph() -> StateGraph:
     builder = StateGraph(SiteState)
 
-    builder.add_node("discover", discover)
-    builder.add_node("fetch", fetch)
+    # RetryPolicy for transient network and LLM failures
+    io_retry_policy = RetryPolicy(max_attempts=3, initial_interval=1.0, backoff_factor=2.0)
+
+    builder.add_node("discover", discover, retry_policy=io_retry_policy)
+    builder.add_node("fetch", fetch, retry_policy=io_retry_policy)
     builder.add_node("extract", extract)
     builder.add_node("fan_out_summaries", fan_out_summaries)
-    builder.add_node("summarize_page", summarize_page)
-    builder.add_node("curate", curate)
-    builder.add_node("categorize", categorize)
+    builder.add_node("summarize_page", summarize_page, retry_policy=io_retry_policy)
+    builder.add_node("curate", curate, retry_policy=io_retry_policy)
+    builder.add_node("categorize", categorize, retry_policy=io_retry_policy)
     builder.add_node("compose", compose)
     builder.add_node("validate", validate)
     builder.add_node("write", write)
@@ -51,37 +56,41 @@ def build_graph() -> StateGraph:
     return builder
 
 
-# LangGraph Studio / CLI expects a prebuilt but uncompiled graph variable.
+# Uncompiled StateGraph builder
 graph_uncompiled = build_graph()
 
 _graph = None
 
 
-def get_graph():
+def get_graph(checkpointer: BaseCheckpointSaver | None = None):
     global _graph
-    if _graph is not None:
+    if _graph is not None and checkpointer is None:
         return _graph
 
     builder = build_graph()
-    # Allow our pydantic state models without msgpack warnings (future strict mode).
-    try:
-        from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+    if checkpointer is None:
+        # Allow our pydantic state models without msgpack warnings (future strict mode).
+        try:
+            from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
-        serde = JsonPlusSerializer(
-            allowed_msgpack_modules=[
-                ("auto_llm_txt.state", "RawPage"),
-                ("auto_llm_txt.state", "Page"),
-                ("auto_llm_txt.state", "PageSummary"),
-                ("auto_llm_txt.state", "Section"),
-                ("auto_llm_txt.state", "FetchError"),
-                ("auto_llm_txt.constants", "PageQuality"),
-            ]
-        )
-        checkpointer = InMemorySaver(serde=serde)
-    except Exception:
-        checkpointer = InMemorySaver()
-    _graph = builder.compile(checkpointer=checkpointer)
-    return _graph
+            serde = JsonPlusSerializer(
+                allowed_msgpack_modules=[
+                    ("auto_llm_txt.state", "RawPage"),
+                    ("auto_llm_txt.state", "Page"),
+                    ("auto_llm_txt.state", "PageSummary"),
+                    ("auto_llm_txt.state", "Section"),
+                    ("auto_llm_txt.state", "FetchError"),
+                    ("auto_llm_txt.constants", "PageQuality"),
+                ]
+            )
+            checkpointer = InMemorySaver(serde=serde)
+        except Exception:  # noqa: BLE001
+            checkpointer = InMemorySaver()
+
+    compiled = builder.compile(checkpointer=checkpointer)
+    if _graph is None:
+        _graph = compiled
+    return compiled
 
 
 # Compiled graph for `langgraph up` / direct import

@@ -1,7 +1,7 @@
 {
     "dependencies": ["."],
     "graphs": {
-        "agent": "./src/auto_llm_txt/agent.py:graph_uncompiled"
+        "agent": "./src/auto_llm_txt/agent.py:graph"
     },
     "env": "./.env"
 }
